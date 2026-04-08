@@ -1,0 +1,45 @@
+services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.13.0
+    ports: ["5000:5000"]
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow.db
+      --default-artifact-root /mlartifacts
+    volumes:
+      - mlflow-data:/mlartifacts
+
+  toxicity:
+    build: ./models/toxicity
+    ports: ["8081:8080"]
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_NAME: toxicity-classifier
+      MODEL_STAGE: Production
+    depends_on: [mlflow]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  ranker:
+    build: ./models/ranker
+    ports: ["8082:8080"]
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_NAME: comment-ranker
+      MODEL_STAGE: Production
+    depends_on: [mlflow]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  mlflow-data:

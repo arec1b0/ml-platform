@@ -1,0 +1,10 @@
+apiVersion: v2
+name: ml-platform
+version: 0.1.0
+dependencies:
+  - name: toxicity
+    version: ">=0.1.0"
+    repository: "file://../toxicity"
+  - name: ranker
+    version: ">=0.1.0"
+    repository: "file://../ranker"

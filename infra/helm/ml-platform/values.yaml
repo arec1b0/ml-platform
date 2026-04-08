@@ -1,0 +1,18 @@
+# Глобальные настройки — переопределяют values дочерних чартов
+global:
+  registry: "europe-west6-docker.pkg.dev/YOUR_PROJECT/ml-platform"
+  mlflowUri: "http://mlflow:5000"
+
+toxicity:
+  replicaCount: 2
+  image:
+    tag: "latest"
+  canary:
+    weight: 5          # % трафика на canary — один параметр
+
+ranker:
+  replicaCount: 2
+  image:
+    tag: "latest"
+  canary:
+    weight: 5

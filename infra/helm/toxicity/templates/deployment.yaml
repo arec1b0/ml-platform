@@ -1,0 +1,57 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout                     # не Deployment — сразу под Argo Rollouts
+metadata:
+  name: toxicity
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: toxicity
+  template:
+    metadata:
+      labels:
+        app: toxicity
+    spec:
+      containers:
+        - name: toxicity
+          image: "{{ .Values.global.registry }}/toxicity:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: 8080
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: {{ .Values.global.mlflowUri }}
+            - name: MODEL_NAME
+              value: "toxicity-classifier"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "3Gi"
+          readinessProbe:
+            httpGet:
+              path: /health/ready    # проверяет, что веса загружены
+              port: 8080
+            initialDelaySeconds: 30  # время загрузки toxic-bert
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+  strategy:
+    canary:
+      canaryWeight: {{ .Values.canary.weight }}
+      steps:
+        - setWeight: {{ .Values.canary.weight }}
+        - pause: {}                  # Argo держит паузу, AnalysisRun решает
+      analysis:
+        templates:
+          - templateName: latency-and-errors
+        startingStep: 1
+        args:
+          - name: service-name
+            value: toxicity
