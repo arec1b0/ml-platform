@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: latency-and-errors-ranker
+spec:
+  args:
+    - name: service-name
+      value: ranker
+
+  metrics:
+    - name: p99-latency
+      interval: 2m
+      count: 10
+      # Ranker (lgbm) быстрее bert — порог строже
+      successCondition: result[0] < 0.05   # < 50ms
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus:9090
+          query: |
+            histogram_quantile(0.99,
+              sum(rate(
+                gateway_upstream_duration_seconds_bucket{
+                  model="{{ args.service-name }}"
+                }[2m]
+              )) by (le)
+            )
+
+    - name: error-rate
+      interval: 2m
+      count: 10
+      successCondition: result[0] < 0.01
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: http://prometheus:9090
+          query: |
+            sum(rate(
+              gateway_errors_total{
+                model="{{ args.service-name }}"
+              }[2m]
+            ))
+            /
+            sum(rate(
+              gateway_requests_total{
+                model="{{ args.service-name }}"
+              }[2m]
+            ))

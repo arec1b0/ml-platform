@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argo-rollouts-notification-cm
+data:
+  # Шаблон алерта
+  template.rollback-alert: |
+    message: |
+      🔴 *Rollback triggered*
+      Service: {{.rollout.metadata.name}}
+      Namespace: {{.rollout.metadata.namespace}}
+      Reason: AnalysisRun failed — SLO violated
+      Runbook: https://your-wiki/runbooks/ml-rollback
+      Dashboard: https://grafana/d/ml-platform?var-model={{.rollout.metadata.name}}
+
+  # Триггер — только на abort
+  trigger.on-rollback: |
+    - condition: rollout.status.phase == "Degraded"
+      send: [rollback-alert]

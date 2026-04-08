@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gateway-metrics
+  labels:
+    release: prometheus    # должен совпадать с selector в kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: ml-gateway
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s        # scrape каждые 15 секунд
+      scrapeTimeout: 10s

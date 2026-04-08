@@ -1,0 +1,80 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: toxicity
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: toxicity
+  template:
+    metadata:
+      labels:
+        app: toxicity
+        version: "{{ .Values.image.tag }}"  # для трейсов
+    spec:
+      containers:
+        - name: toxicity
+          image: "{{ .Values.global.registry }}/toxicity:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: 8080
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: {{ .Values.global.mlflowUri }}
+            - name: MODEL_NAME
+              value: "toxicity-classifier"
+            - name: MODEL_STAGE
+              value: "Production"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "3Gi"
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+
+  strategy:
+    canary:
+      # Два Service обязательны для weighted routing
+      canaryService: toxicity-canary
+      stableService: toxicity-stable
+
+      trafficRouting:
+        nginx:
+          stableIngress: toxicity-ingress
+
+      steps:
+        # Шаг 1: 5% трафика на canary
+        - setWeight: {{ .Values.canary.weight }}
+
+        # Шаг 2: запустить анализ
+        - analysis:
+            templates:
+              - templateName: latency-and-errors-toxicity
+            args:
+              - name: service-name
+                value: toxicity
+
+        # Шаг 3: если анализ прошёл — промоут до 50%
+        - setWeight: 50
+        - pause: {duration: 5m}
+
+        # Шаг 4: полный промоут
+        - setWeight: 100
+
+      # При failure — автоматический rollback
+      # Argo сам переключает трафик обратно на stable
+      abortScaleDownDelaySeconds: 30

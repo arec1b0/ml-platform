@@ -1,0 +1,68 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: latency-and-errors-toxicity
+spec:
+  args:
+    - name: service-name       # передаётся из Rollout
+      value: toxicity
+
+  metrics:
+    # ── 1. p99 latency ──────────────────────────────────────────
+    - name: p99-latency
+      interval: 2m             # проверка каждые 2 минуты
+      count: 10                # 10 проверок = 20-минутное окно
+      successCondition: result[0] < 0.2   # < 200ms
+      failureLimit: 2          # допустимо 2 "miss" из 10
+      provider:
+        prometheus:
+          address: http://prometheus:9090
+          query: |
+            histogram_quantile(0.99,
+              sum(rate(
+                gateway_upstream_duration_seconds_bucket{
+                  model="{{ args.service-name }}"
+                }[2m]
+              )) by (le)
+            )
+
+    # ── 2. Error rate ────────────────────────────────────────────
+    - name: error-rate
+      interval: 2m
+      count: 10
+      # Ошибок < 1% от общего трафика
+      successCondition: result[0] < 0.01
+      failureLimit: 1          # одна miss = rollback (ошибки критичны)
+      provider:
+        prometheus:
+          address: http://prometheus:9090
+          query: |
+            sum(rate(
+              gateway_errors_total{
+                model="{{ args.service-name }}"
+              }[2m]
+            ))
+            /
+            sum(rate(
+              gateway_requests_total{
+                model="{{ args.service-name }}"
+              }[2m]
+            ))
+
+    # ── 3. Throughput sanity check ───────────────────────────────
+    # Если запросов < 10 RPS — анализ невалиден, пауза
+    - name: min-traffic
+      interval: 2m
+      count: 10
+      # Достаточно трафика для статистически значимого анализа
+      successCondition: result[0] >= 10
+      failureLimit: 10         # не fail, просто информационная метрика
+      provider:
+        prometheus:
+          address: http://prometheus:9090
+          query: |
+            sum(rate(
+              gateway_requests_total{
+                model="{{ args.service-name }}"
+              }[2m]
+            ))
