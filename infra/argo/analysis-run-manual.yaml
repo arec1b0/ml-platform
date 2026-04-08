@@ -1,0 +1,13 @@
+# Запускать вручную для проверки AnalysisTemplate без деплоя новой версии
+# kubectl apply -f infra/argo/analysis-run-manual.yaml
+# kubectl get analysisrun toxicity-manual-test -w
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisRun
+metadata:
+  name: toxicity-manual-test
+spec:
+  templates:
+    - templateName: latency-and-errors-toxicity
+  args:
+    - name: service-name
+      value: toxicity
