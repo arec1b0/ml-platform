@@ -26,26 +26,31 @@ def data_prep_and_drift_monitoring():
     @task
     def prepare_data_task():
         import os
-        import pandas as pd
-        import numpy as np
+        import mlflow
+        from mlflow.tracking import MlflowClient
 
         ref_path = '/opt/airflow/reports/reference_data.parquet'
+        os.makedirs('/opt/airflow/reports', exist_ok=True)
         
-        # Fallback reference dataset if it doesn't exist
-        if not os.path.exists(ref_path):
-            num_records = 500
-            ref_data = pd.DataFrame({
-                'text_length': np.random.normal(50, 15, num_records),
-                'num_words': np.random.normal(10, 3, num_records),
-                'prediction_score': np.random.normal(0.2, 0.1, num_records),
-            })
-            ref_data['text_length'] = ref_data['text_length'].clip(lower=1)
-            ref_data['num_words'] = ref_data['num_words'].clip(lower=1)
-            ref_data['prediction_score'] = ref_data['prediction_score'].clip(lower=0, upper=1)
+        MLFLOW_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+        mlflow.set_tracking_uri(MLFLOW_URI)
+        client = MlflowClient()
+        
+        try:
+            model_name = "toxicity-classifier"
+            latest = client.get_latest_versions(model_name, stages=["Production"])[0]
+            client.download_artifacts(latest.run_id, "data/reference_data.parquet", "/opt/airflow/reports/")
             
-            os.makedirs('/opt/airflow/reports', exist_ok=True)
-            ref_data.to_parquet(ref_path)
-            print("Fallback reference data created.")
+            # The downloaded file is saved at /opt/airflow/reports/data/reference_data.parquet
+            downloaded_path = "/opt/airflow/reports/data/reference_data.parquet"
+            if os.path.exists(downloaded_path):
+                # Move to standard path
+                os.rename(downloaded_path, ref_path)
+                
+            print("Successfully downloaded reference dataset from MLflow.")
+        except Exception as e:
+            print(f"Error downloading from MLflow: {e}")
+            raise Exception("Cannot proceed without baseline dataset.")
             
         return ref_path
 
@@ -68,6 +73,11 @@ def data_prep_and_drift_monitoring():
                     if line.strip():
                         data.append(json.loads(line))
             prod_data = pd.DataFrame(data)
+            
+            # Clear the file after reading (Log rotation)
+            with open(log_path, 'w') as f:
+                pass
+            print(f"Cleared log file {log_path}")
             
         prod_data.to_parquet(prod_path)
         print("Production data extracted and saved.")

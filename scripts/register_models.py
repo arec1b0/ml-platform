@@ -6,6 +6,7 @@ import os
 import mlflow
 import lightgbm as lgb
 import numpy as np
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from transformers import pipeline
 
@@ -28,6 +29,22 @@ def register_toxicity():
             artifact_path="model",
             registered_model_name=model_name,
         )
+
+        # Создаем и логируем baseline dataset (Reference Data)
+        num_records = 500
+        ref_data = pd.DataFrame({
+            'text_length': np.random.normal(50, 15, num_records),
+            'num_words': np.random.normal(10, 3, num_records),
+            'prediction_score': np.random.normal(0.2, 0.1, num_records),
+        })
+        ref_data['text_length'] = ref_data['text_length'].clip(lower=1)
+        ref_data['num_words'] = ref_data['num_words'].clip(lower=1)
+        ref_data['prediction_score'] = ref_data['prediction_score'].clip(lower=0, upper=1)
+        
+        ref_path = "reference_data.parquet"
+        ref_data.to_parquet(ref_path)
+        mlflow.log_artifact(ref_path, artifact_path="data")
+        os.remove(ref_path)
 
     client = mlflow.MlflowClient()
     latest = client.get_latest_versions(model_name, stages=["None"])[0]

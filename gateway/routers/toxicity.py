@@ -4,7 +4,7 @@ import json
 import os
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from opentelemetry import trace
 from pydantic import BaseModel
 
@@ -30,8 +30,20 @@ class ToxicityResponse(BaseModel):
     upstream_latency_ms: float
 
 
+def log_prediction_background(req_text: str, data_score: float):
+    """Writes prediction metrics to a JSONL file in the background."""
+    os.makedirs("/app/reports", exist_ok=True)
+    with open("/app/reports/predictions.jsonl", "a") as f:
+        log_entry = {
+            "text_length": len(req_text),
+            "num_words": len(req_text.split()),
+            "prediction_score": data_score
+        }
+        f.write(json.dumps(log_entry) + "\n")
+
+
 @router.post("/predict", response_model=ToxicityResponse)
-async def predict(req: ToxicityRequest):
+async def predict(req: ToxicityRequest, background_tasks: BackgroundTasks):
     t0 = time.perf_counter()
 
     with tracer.start_as_current_span("toxicity.predict") as span:
@@ -73,15 +85,8 @@ async def predict(req: ToxicityRequest):
         span.set_attribute("result.is_toxic", data["is_toxic"])
         span.set_attribute("result.score", data["score"])
 
-        # Log to file for Evidently metrics
-        os.makedirs("/app/reports", exist_ok=True)
-        with open("/app/reports/predictions.jsonl", "a") as f:
-            log_entry = {
-                "text_length": len(req.text),
-                "num_words": len(req.text.split()),
-                "prediction_score": data["score"]
-            }
-            f.write(json.dumps(log_entry) + "\n")
+        # Dispatch log write to background to avoid blocking event loop
+        background_tasks.add_task(log_prediction_background, req.text, data["score"])
 
         return ToxicityResponse(
             label=data["label"],
