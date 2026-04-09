@@ -1,0 +1,180 @@
+{
+  "title": "ML Platform",
+  "uid": "ml-platform",
+  "refresh": "15s",
+  "time": { "from": "now-30m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "model",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(gateway_requests_total, model)",
+        "current": { "value": "$__all" },
+        "includeAll": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Request Rate (RPS)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "expr": "sum(rate(gateway_requests_total{model=~\"$model\"}[1m])) by (model)",
+          "legendFormat": "{{model}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "thresholds": {
+          "steps": [
+            { "value": 0,   "color": "green" },
+            { "value": 450, "color": "yellow" },
+            { "value": 500, "color": "red" }
+          ]
+        }}
+      }
+    },
+    {
+      "title": "Error Rate",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "expr": "sum(rate(gateway_errors_total{model=~\"$model\"}[1m])) by (model, error_type)",
+          "legendFormat": "{{model}} / {{error_type}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              { "value": 0,    "color": "green" },
+              { "value": 0.005,"color": "yellow" },
+              { "value": 0.01, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Upstream Health",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "expr": "gateway_upstream_healthy",
+          "legendFormat": "{{model}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN",    "color": "red"   } } },
+            { "type": "value", "options": { "1": { "text": "HEALTHY", "color": "green" } } }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Latency p50 / p95 / p99",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 6, "w": 16, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(gateway_upstream_duration_seconds_bucket{model=~\"$model\"}[1m])) by (le, model))",
+          "legendFormat": "p50 {{model}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(gateway_upstream_duration_seconds_bucket{model=~\"$model\"}[1m])) by (le, model))",
+          "legendFormat": "p95 {{model}}"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(gateway_upstream_duration_seconds_bucket{model=~\"$model\"}[1m])) by (le, model))",
+          "legendFormat": "p99 {{model}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "steps": [
+              { "value": 0,   "color": "green"  },
+              { "value": 0.1, "color": "yellow" },
+              { "value": 0.2, "color": "red"    }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "SLO Compliance (p99 < 200ms)",
+      "type": "gauge",
+      "gridPos": { "x": 16, "y": 6, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "100 * (1 - clamp_min(histogram_quantile(0.99, sum(rate(gateway_upstream_duration_seconds_bucket[5m])) by (le)) - 0.2, 0) / 0.2)",
+          "legendFormat": "SLO %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0, "max": 100,
+          "thresholds": {
+            "steps": [
+              { "value": 0,  "color": "red"    },
+              { "value": 95, "color": "yellow" },
+              { "value": 99, "color": "green"  }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Canary Weight (Argo Rollouts)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 6 },
+      "description": "Процент трафика на canary версию. Рост → промоут. Падение до 0 → rollback.",
+      "targets": [
+        {
+          "expr": "rollout_info{namespace=\"ml-platform\"}",
+          "legendFormat": "{{name}} canary weight"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100 }
+      }
+    },
+    {
+      "title": "AnalysisRun Status",
+      "type": "table",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "analysis_run_info{namespace=\"ml-platform\"}",
+          "legendFormat": "{{name}}"
+        }
+      ]
+    },
+    {
+      "title": "Throughput vs Latency (Scatter)",
+      "type": "xychart",
+      "gridPos": { "x": 0, "y": 20, "w": 24, "h": 8 },
+      "description": "Корреляция нагрузки и latency. Ищем inflection point — где p99 начинает расти.",
+      "targets": [
+        {
+          "expr": "sum(rate(gateway_requests_total[1m]))",
+          "legendFormat": "RPS"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(gateway_upstream_duration_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p99 latency"
+        }
+      ]
+    }
+  ]
+}

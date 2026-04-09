@@ -1,0 +1,44 @@
+# kube-prometheus-stack
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    retention: 15d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          resources:
+            requests:
+              storage: 20Gi
+
+grafana:
+  adminPassword: "change-me-in-production"
+  persistence:
+    enabled: true
+    size: 5Gi
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+    datasources:
+      enabled: true
+  grafana.ini:
+    feature_toggles:
+      enable: "traceToMetrics"
+
+# Tempo (трейсы)
+tempo:
+  tempo:
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /var/tempo/traces
+    retention: 72h    # 3 дня — достаточно для demo и дебага
+
+# Argo Rollouts metrics
+argo-rollouts:
+  controller:
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true

@@ -1,0 +1,69 @@
+groups:
+  - name: ml-platform.slo
+    interval: 30s
+    rules:
+
+      # ── Latency SLO ────────────────────────────────────────────
+      - alert: HighP99Latency
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(gateway_upstream_duration_seconds_bucket[5m])) by (le, model)
+          ) > 0.2
+        for: 2m
+        labels:
+          severity: critical
+          team: ml-platform
+        annotations:
+          summary: "p99 latency SLO violated: {{ $labels.model }}"
+          description: >
+            p99 latency for {{ $labels.model }} is {{ $value | humanizeDuration }},
+            SLO is 200ms.
+          runbook_url: "https://your-wiki/runbooks/ml-rollback"
+          dashboard_url: "https://grafana/d/ml-platform?var-model={{ $labels.model }}"
+
+      # ── Error Rate SLO ─────────────────────────────────────────
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(gateway_errors_total[5m])) by (model)
+          /
+          sum(rate(gateway_requests_total[5m])) by (model)
+          > 0.01
+        for: 1m
+        labels:
+          severity: critical
+          team: ml-platform
+        annotations:
+          summary: "Error rate SLO violated: {{ $labels.model }}"
+          description: >
+            Error rate for {{ $labels.model }} is {{ $value | humanizePercentage }},
+            SLO is 1%.
+          runbook_url: "https://your-wiki/runbooks/ml-rollback"
+
+      # ── Upstream Down ──────────────────────────────────────────
+      - alert: UpstreamUnhealthy
+        expr: gateway_upstream_healthy == 0
+        for: 1m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "Upstream unhealthy: {{ $labels.model }}"
+          description: >
+            Model service {{ $labels.model }} is not responding to /health/ready.
+
+      # ── Throughput Drop ────────────────────────────────────────
+      # Неожиданное падение трафика — признак проблемы выше по стеку
+      - alert: ThroughputDrop
+        expr: |
+          sum(rate(gateway_requests_total[5m]))
+          
+          sum(rate(gateway_requests_total[5m] offset 10m)) * 0.5
+        for: 3m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "Throughput dropped >50% vs 10m ago"
+          description: >
+            Current RPS is significantly lower than 10 minutes ago.
+            Possible upstream or ingress issue.

@@ -1,0 +1,55 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+  # Добавляем service.version из env — нужно для корреляции canary трейсов
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: production
+        action: insert
+
+  # Фильтруем health-check трейсы — они засоряют Tempo
+  filter/health:
+    traces:
+      span:
+        - 'attributes["http.route"] == "/health/live"'
+        - 'attributes["http.route"] == "/health/ready"'
+
+exporters:
+  # Tempo для трейсов
+  otlp/tempo:
+    endpoint: http://tempo:4317
+    tls:
+      insecure: true
+
+  # Prometheus для метрик из трейсов (exemplars)
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    send_timestamps: true
+    enable_open_metrics: true
+
+  # Логи в stdout для дебага
+  logging:
+    verbosity: normal
+
+service:
+  pipelines:
+    traces:
+      receivers:  [otlp]
+      processors: [batch, resource, filter/health]
+      exporters:  [otlp/tempo, logging]
+
+    metrics:
+      receivers:  [otlp]
+      processors: [batch]
+      exporters:  [prometheus]
