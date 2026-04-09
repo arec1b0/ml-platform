@@ -1,55 +1,55 @@
 # Runbook: ML Model Rollback
 
-## Триггер
-Этот runbook открывается автоматически при срабатывании Slack-алерта о rollback.
+## Trigger
+This runbook is opened automatically when a Slack rollback alert is triggered.
 
-## Диагностика (первые 2 минуты)
+## Diagnostics (first 2 minutes)
 
-### 1. Статус Rollout
+### 1. Rollout Status
 ```bash
 kubectl argo rollouts get rollout toxicity -n ml-platform --watch
 kubectl argo rollouts get rollout ranker   -n ml-platform --watch
 ```
 
-### 2. AnalysisRun — почему failed?
+### 2. AnalysisRun — why did it fail?
 ```bash
 kubectl get analysisrun -n ml-platform
 kubectl describe analysisrun <NAME> -n ml-platform
 ```
 
-### 3. Метрики в момент rollback
+### 3. Metrics at the time of rollback
 Grafana: https://grafana/d/ml-platform
-- Panel: "Error Rate by Model" → смотри аномалию
-- Panel: "p99 Latency" → смотри spike
+- Panel: "Error Rate by Model" → look for anomalies
+- Panel: "p99 Latency" → look for spikes
 
-### 4. Логи canary пода
+### 4. Canary pod logs
 ```bash
 kubectl logs -l app=toxicity,rollouts-pod-template-hash=<CANARY_HASH> \
   -n ml-platform --since=10m
 ```
 
-## Действия
+## Actions
 
-### Rollback уже произошёл автоматически
-Ничего делать не нужно. Проверь:
-1. Grafana: error rate вернулся к норме (< 1%)
+### Rollback has already occurred automatically
+No action is required. Check:
+1. Grafana: error rate returned to normal (< 1%)
 2. `kubectl argo rollouts get rollout toxicity` → phase: Healthy
 
-### Rollback не произошёл (phase: Paused)
+### Rollback did not occur (phase: Paused)
 ```bash
-# Принудительный abort
+# Force abort
 kubectl argo rollouts abort toxicity -n ml-platform
 ```
 
-### Нужно зафиксировать баг в модели
+### Need to record a bug in the model
 ```bash
-# Проверить какая версия сейчас в canary
+# Check which version is currently in canary
 kubectl argo rollouts get rollout toxicity -n ml-platform \
   -o jsonpath='{.status.canary.currentStepIndex}'
 
-# Откатиться к конкретной версии в MLflow
+# Roll back to a specific version in MLflow
 python scripts/rollback_model.py --model toxicity-classifier --version 3
 ```
 
-## Эскалация
-Если проблема не решена за 30 минут → @ml-platform-oncall
+## Escalation
+If the problem is not resolved within 30 minutes → @ml-platform-oncall
