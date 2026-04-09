@@ -82,6 +82,10 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - reports-data:/opt/airflow/reports
 
+  pushgateway:
+    image: prom/pushgateway:v1.8.0
+    ports: ["9091:9091"]
+
 volumes:
   mlflow-data:
   reports-data:

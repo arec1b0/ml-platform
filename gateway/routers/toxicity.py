@@ -1,5 +1,7 @@
 import time
 import logging
+import json
+import os
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -70,6 +72,16 @@ async def predict(req: ToxicityRequest):
 
         span.set_attribute("result.is_toxic", data["is_toxic"])
         span.set_attribute("result.score", data["score"])
+
+        # Log to file for Evidently metrics
+        os.makedirs("/app/reports", exist_ok=True)
+        with open("/app/reports/predictions.jsonl", "a") as f:
+            log_entry = {
+                "text_length": len(req.text),
+                "num_words": len(req.text.split()),
+                "prediction_score": data["score"]
+            }
+            f.write(json.dumps(log_entry) + "\n")
 
         return ToxicityResponse(
             label=data["label"],

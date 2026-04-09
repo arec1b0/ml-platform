@@ -16,3 +16,7 @@ scrape_configs:
     static_configs:
       - targets: ["ranker:8080"]
     metrics_path: /metrics
+
+  - job_name: pushgateway
+    static_configs:
+      - targets: ["pushgateway:9091"]
