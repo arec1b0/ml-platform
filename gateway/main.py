@@ -8,7 +8,7 @@ from core.config import settings
 from core.tracing import setup_tracing
 from core.http_client import init_clients, close_clients
 from core.metrics import UPSTREAM_HEALTH
-from routers import toxicity, ranker
+from routers import toxicity, ranker, monitoring
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,6 +45,7 @@ app.mount("/metrics", metrics_app)
 
 app.include_router(toxicity.router)
 app.include_router(ranker.router)
+app.include_router(monitoring.router)
 
 
 async def _check_upstream_health():

@@ -49,6 +49,8 @@ services:
       RANKER_URL: http://ranker:8080
       OTEL_ENDPOINT: http://otel-collector:4317
       SERVICE_NAME: ml-gateway
+    volumes:
+      - reports-data:/app/reports
     depends_on:
       toxicity:
         condition: service_healthy
@@ -68,5 +70,18 @@ services:
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
 
+  airflow:
+    build: ./airflow
+    ports: ["8085:8080"]
+    environment:
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=admin
+    command: standalone
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - reports-data:/opt/airflow/reports
+
 volumes:
   mlflow-data:
+  reports-data:
